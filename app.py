@@ -39,6 +39,15 @@ def get_metier(code_rome):
     r.raise_for_status()
     return r.json()
 
+def extract_contextes_by_categorie(contextes, categorie):
+    """Extrait les libellés des contextes pour une catégorie donnée"""
+    result = []
+    if 'contextestravail' in contextes:
+        for ctx in contextes['contextestravail']:
+            if ctx.get('categorie') == categorie:
+                result.append(ctx.get('libelle', ''))
+    return result
+
 def flatten_dict(d, parent_key='', sep='_'):
     """Aplatit un dictionnaire imbriqué pour l'Excel"""
     items = []
@@ -59,73 +68,147 @@ def flatten_dict(d, parent_key='', sep='_'):
             
     return dict(items)
 
-def json_to_df(metier_data):
-    flat_data = flatten_dict(metier_data)
-    return pd.DataFrame([flat_data])
+def json_to_df(metiers_data):
+    """Convertit une liste de métiers en DataFrame"""
+    flat_data = []
+    for metier in metiers_data:
+        flat_metier = flatten_dict(metier)
+        flat_data.append(flat_metier)
+    return pd.DataFrame(flat_data)
 
 # ────────────────────────────────────────────────
 #                  INTERFACE STREAMLIT
 # ────────────────────────────────────────────────
 
-st.title("🔎 Recherche Métier ROME")
-st.markdown("Entrez un code ROME et téléchargez le résultat **en Excel (.xlsx)**")
+st.title("🔎 Recherche Multi-Métiers ROME")
+st.markdown("**Entrez plusieurs codes ROME (1 par ligne) et téléchargez le résultat en Excel**")
 
-code_rome = st.text_input("Code ROME (ex: A1413)", "").strip().upper()
+# Zone de saisie multi-lignes
+codes_input = st.text_area(
+    "Codes ROME (un par ligne, ex: A1413\nM1805\nH1203)", 
+    height=150,
+    placeholder="A1413\nM1805\nH1203"
+)
 
-if st.button("🔍 Rechercher"):
-    if not code_rome:
-        st.warning("⚠️ Veuillez entrer un code ROME valide.")
+if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
+    if not codes_input.strip():
+        st.warning("⚠️ Veuillez entrer au moins un code ROME.")
     else:
-        with st.spinner("Recherche en cours..."):
-            try:
-                metier = get_metier(code_rome)
-                libelle = metier.get('libelle', 'Sans libellé')
-                st.success(f"✅ Métier trouvé : **{libelle}** ({code_rome})")
+        codes_list = [code.strip().upper() for code in codes_input.strip().split('\n') if code.strip()]
+        
+        if not codes_list:
+            st.warning("⚠️ Aucun code ROME valide détecté.")
+        else:
+            st.info(f"🔄 Recherche de **{len(codes_list)}** métiers...")
+            
+            progress_bar = st.progress(0)
+            metiers_data = []
+            statuts = []
+            
+            for i, code_rome in enumerate(codes_list):
+                try:
+                    with st.spinner(f"Recherche {code_rome}..."):
+                        metier = get_metier(code_rome)
+                        libelle = metier.get('libelle', 'Sans libellé')
+                        metiers_data.append(metier)
+                        statuts.append(f"✅ **{libelle}** ({code_rome})")
+                except requests.HTTPError:
+                    statuts.append(f"❌ **{code_rome}** (non trouvé)")
+                except Exception as e:
+                    statuts.append(f"❌ **{code_rome}** (erreur: {str(e)[:30]}...)")
                 
-                with st.expander("📋 Voir le JSON brut"):
-                    st.json(metier)
+                progress_bar.progress((i + 1) / len(codes_list))
+            
+            # Affichage des résultats
+            st.subheader("📋 Résultats de la recherche")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**✅ Métiers trouvés :**")
+                for statut in statuts:
+                    st.markdown(statut)
+            
+            with col2:
+                reussis = sum(1 for s in statuts if s.startswith("✅"))
+                st.metric("Taux de réussite", f"{reussis}/{len(codes_list)}", f"{reussis/len(codes_list)*100:.0f}%")
+            
+            # Extraction des contextes spécifiques
+            if any("✅" in s for s in statuts):
+                st.subheader("⚙️ Conditions de travail & Horaires")
                 
-                # Conversion en DataFrame
-                df = json_to_df(metier)
+                col1, col2 = st.columns(2)
                 
-                # Préparation du fichier Excel
+                with col1:
+                    st.markdown("### 🏭 **Conditions de travail et risques professionnels**")
+                    conditions_travail = []
+                    for metier in metiers_data:
+                        ctx = extract_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
+                        conditions_travail.extend(ctx)
+                    
+                    if conditions_travail:
+                        for libelle in conditions_travail:
+                            st.markdown(f"- **{libelle}**")
+                    else:
+                        st.info("Aucun contexte CONDITIONS_TRAVAIL trouvé")
+                
+                with col2:
+                    st.markdown("### ⏰ **Horaires et durée du travail**")
+                    horaires_travail = []
+                    for metier in metiers_data:
+                        ctx = extract_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
+                        horaires_travail.extend(ctx)
+                    
+                    if horaires_travail:
+                        for libelle in horaires_travail:
+                            st.markdown(f"- **{libelle}**")
+                    else:
+                        st.info("Aucun contexte HORAIRE_ET_DUREE_TRAVAIL trouvé")
+            
+            # JSON brut (expander)
+            if metiers_data:
+                with st.expander("📋 Voir tous les JSON bruts"):
+                    st.json(metiers_data)
+            
+            # Téléchargements
+            if metiers_data:
+                df = json_to_df(metiers_data)
+                
+                # Excel multi-feuilles
                 excel_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    df.to_excel(
-                        writer, 
-                        sheet_name='Metier_ROME', 
-                        index=False,
-                        freeze_panes=(1,0),           # figer la ligne d'en-tête
-                        engine_kwargs={'options': {'strings_to_formulas': False}}
-                    )
+                    df.to_excel(writer, sheet_name='Tous_les_metiers', index=False)
+                    
+                    # Feuille récap contextes
+                    contextes_df = []
+                    for metier in metiers_data:
+                        row = {'code': metier.get('code', ''), 'libelle': metier.get('libelle', '')}
+                        
+                        # Conditions de travail
+                        ctx_cond = extract_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
+                        row['conditions_travail'] = "; ".join(ctx_cond)
+                        
+                        # Horaires
+                        ctx_horaires = extract_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
+                        row['horaires_travail'] = "; ".join(ctx_horaires)
+                        
+                        contextes_df.append(row)
+                    
+                    pd.DataFrame(contextes_df).to_excel(writer, sheet_name='Récap_Contextes', index=False)
                 
                 excel_buffer.seek(0)
                 
-                # Bouton de téléchargement principal → Excel
                 st.download_button(
-                    label="📊 Télécharger en Excel (.xlsx)",
+                    label=f"📊 Télécharger Excel ({len(metiers_data)} métiers)",
                     data=excel_buffer.getvalue(),
-                    file_name=f"{code_rome}_{libelle.replace(' ', '_')[:40]}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    help="Fichier Excel avec tous les champs aplatis",
+                    file_name=f"ROME_{len(metiers_data)}_metiers.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-                
-                # Option secondaire CSV (facultatif)
-                csv_buffer = io.StringIO()
-                df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
-                st.download_button(
-                    label="Télécharger en CSV (optionnel)",
-                    data=csv_buffer.getvalue(),
-                    file_name=f"{code_rome}_metier.csv",
-                    mime="text/csv",
-                )
-                
-            except requests.HTTPError as e:
-                status = e.response.status_code if e.response is not None else "?"
-                st.error(f"❌ Erreur API (code {status}) — Code ROME probablement invalide")
-                if e.response is not None:
-                    with st.expander("Détail de l'erreur"):
-                        st.code(e.response.text)
-            except Exception as e:
 
-                st.error(f"❌ Erreur inattendue : {e}")
+# Exemple
+with st.expander("💡 Exemple d'utilisation"):
+    st.code("""
+A1413
+M1805
+H1203
+K2110
+""", language="text")
