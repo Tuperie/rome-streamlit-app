@@ -154,13 +154,57 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 
                 progress_bar.progress((i + 1) / len(codes_list))
             
-            # Résultats à l'écran
-            st.subheader("📋 Résultats détaillés par métier")
+            # ────────────────────────────────────────────────
+            # RÉSULTATS GLOBAUX + BOUTON TÉLÉCHARGEMENT EN HAUT
+            # ────────────────────────────────────────────────
+            st.subheader("📊 Résumé de la recherche")
             
             reussis = sum(1 for s in statuts if s.get('success', False))
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.metric("Taux de réussite", f"{reussis}/{len(codes_list)}")
+                st.metric("Métiers trouvés", f"{reussis} / {len(codes_list)}")
+            
+            # Téléchargement juste après le résumé (en haut)
+            reussis_data = [s['metier_data'] for s in statuts if s.get('success', False)]
+            if reussis_data:
+                df = create_enriched_df(reussis_data)
+                
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    df.to_excel(writer, sheet_name='Metiers_ROME', index=False)
+                    
+                    workbook = writer.book
+                    worksheet = writer.sheets['Metiers_ROME']
+                    
+                    for col_idx, column_cells in enumerate(worksheet.columns, start=1):
+                        column_letter = get_column_letter(col_idx)
+                        header_value = worksheet[f"{column_letter}1"].value
+                        if header_value:
+                            length = len(str(header_value)) + 5
+                            width = min(length, 80)
+                            worksheet.column_dimensions[column_letter].width = width
+                    
+                    worksheet.freeze_panes = "A2"
+                
+                excel_buffer.seek(0)
+                
+                st.download_button(
+                    label=f"📥 Télécharger le fichier Excel ({len(reussis_data)} métiers)",
+                    data=excel_buffer.getvalue(),
+                    file_name=f"ROME_multi_metiers_{len(reussis_data)}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",   # ← rend le bouton plus visible
+                    use_container_width=True
+                )
+            else:
+                st.info("Aucun métier trouvé → pas de fichier à télécharger.")
+            
+            st.divider()
+            
+            # ────────────────────────────────────────────────
+            # DÉTAILS PAR MÉTIER (après le bouton)
+            # ────────────────────────────────────────────────
+            st.subheader("📋 Détails par métier")
             
             for statut in statuts:
                 code_rome = statut['code']
@@ -230,4 +274,3 @@ M1805
 H1203
 K2110
 """, language="text")
-
