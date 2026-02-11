@@ -82,8 +82,8 @@ def create_enriched_df(metiers_data):
         conditions = get_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
         horaires = get_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
         
-        flat['Conditions de travail et risques professionnels'] = ', '.join(conditions) if conditions else ''
-        flat['Horaires et durée du travail'] = ', '.join(horaires) if horaires else ''
+        flat['Conditions de travail et risques professionnels'] = '; '.join(conditions) if conditions else ''
+        flat['Horaires et durée du travail'] = '; '.join(horaires) if horaires else ''
         
         rows.append(flat)
     
@@ -96,8 +96,7 @@ def create_enriched_df(metiers_data):
     if 'Horaires et durée du travail' in df.columns:
         desired_order.append('Horaires et durée du travail')
     
-    remaining_cols = [c for c in df.columns if c not in desired_order]
-    final_order = desired_order + remaining_cols
+    final_order = desired_order
     
     return df[final_order]
 
@@ -231,3 +230,4 @@ M1805
 H1203
 K2110
 """, language="text")
+
