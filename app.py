@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import io
+from openpyxl.utils import get_column_letter
 
 # TES CREDENTIALS (ne pas partager en prod !)
 CLIENT_ID = "PAR_mehdi_1cb67173257a433ced027b120f0031709c3931337aa63efe3addb49ccef60743"
@@ -29,7 +30,7 @@ def get_metier(code_rome):
     champs = (
         "code,"
         "libelle,"
-        "contextestravail(categorie,libelle),"
+        "contextestravail(categorie,libelle),"  # Note : on garde cette syntaxe pour l'API
     )
     
     url = f"{API_BASE}/v1/metiers/metier/{code_rome}"
@@ -42,11 +43,11 @@ def get_metier(code_rome):
 def get_contextes_by_categorie(metier, categorie):
     """Extrait les libellés pour une catégorie spécifique"""
     contextes = []
-    if 'contextesTravail' in metier:
+    if 'contextesTravail' in metier:  # ← Clé réelle dans le JSON reçu
         for ctx in metier['contextesTravail']:
             if ctx.get('categorie') == categorie:
                 libelle = ctx.get('libelle', '').strip()
-                if libelle:  # Éviter les vides
+                if libelle:
                     contextes.append(libelle)
     return contextes
 
@@ -70,13 +71,35 @@ def flatten_dict(d, parent_key='', sep='_'):
             
     return dict(items)
 
-def json_to_df(metiers_data):
-    """Convertit une liste de métiers en DataFrame"""
-    flat_data = []
+def create_enriched_df(metiers_data):
+    """Crée un DataFrame avec colonnes aplaties + deux colonnes condensées"""
+    rows = []
+    
     for metier in metiers_data:
-        flat_metier = flatten_dict(metier)
-        flat_data.append(flat_metier)
-    return pd.DataFrame(flat_data)
+        flat = flatten_dict(metier)
+        
+        # Extraction des deux listes condensées
+        conditions = get_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
+        horaires = get_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
+        
+        flat['Conditions de travail et risques professionnels'] = ', '.join(conditions) if conditions else ''
+        flat['Horaires et durée du travail'] = ', '.join(horaires) if horaires else ''
+        
+        rows.append(flat)
+    
+    df = pd.DataFrame(rows)
+    
+    # Réordonner : code → libelle → conditions → horaires → reste
+    desired_order = ['code', 'libelle']
+    if 'Conditions de travail et risques professionnels' in df.columns:
+        desired_order.append('Conditions de travail et risques professionnels')
+    if 'Horaires et durée du travail' in df.columns:
+        desired_order.append('Horaires et durée du travail')
+    
+    remaining_cols = [c for c in df.columns if c not in desired_order]
+    final_order = desired_order + remaining_cols
+    
+    return df[final_order]
 
 # ────────────────────────────────────────────────
 # INTERFACE STREAMLIT
@@ -85,7 +108,6 @@ def json_to_df(metiers_data):
 st.title("🔎 Recherche Multi-Métiers ROME")
 st.markdown("**Entrez plusieurs codes ROME (1 par ligne) et consultez les résultats détaillés**")
 
-# Zone de saisie multi-lignes
 codes_input = st.text_area(
     "Codes ROME (un par ligne, ex: A1413\nM1805\nH1203)",
     height=150,
@@ -96,7 +118,7 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
     if not codes_input.strip():
         st.warning("⚠️ Veuillez entrer au moins un code ROME.")
     else:
-        codes_list = list(set([code.strip().upper() for code in codes_input.strip().split('\n') if code.strip()]))  # Déduplication
+        codes_list = list(set(code.strip().upper() for code in codes_input.strip().split('\n') if code.strip()))
         
         if not codes_list:
             st.warning("⚠️ Aucun code ROME valide détecté.")
@@ -127,23 +149,20 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 except Exception as e:
                     statuts.append({
                         'code': code_rome,
-                        'libelle': f'Erreur: {str(e)[:30]}',
+                        'libelle': f'Erreur: {str(e)[:30]}…',
                         'success': False
                     })
                 
                 progress_bar.progress((i + 1) / len(codes_list))
             
-            # Affichage des résultats - CHAQUE MÉTIER avec ses contextes
+            # Résultats à l'écran
             st.subheader("📋 Résultats détaillés par métier")
             
             reussis = sum(1 for s in statuts if s.get('success', False))
             col1, col2 = st.columns([3, 1])
             with col1:
                 st.metric("Taux de réussite", f"{reussis}/{len(codes_list)}")
-            with col2:
-                st.metric("Temps total", f"{len(codes_list)*2:.0f}s estimés")
             
-            # Affichage par métier
             for statut in statuts:
                 code_rome = statut['code']
                 libelle = statut['libelle']
@@ -151,76 +170,28 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 if statut.get('success', False):
                     st.success(f"✅ **{libelle}** ({code_rome})")
                     
-                    # Conditions de travail pour CE métier
                     conditions_ctx = get_contextes_by_categorie(statut['metier_data'], "CONDITIONS_TRAVAIL")
                     st.markdown("**🏭 Conditions de travail et risques professionnels :**")
                     if conditions_ctx:
                         for ctx in conditions_ctx:
                             st.markdown(f"- {ctx}")
                     else:
-                        st.markdown("*Aucune condition de travail trouvée.*")
+                        st.markdown("*Aucune condition trouvée*")
                     
-                    # Horaires pour CE métier
                     horaires_ctx = get_contextes_by_categorie(statut['metier_data'], "HORAIRE_ET_DUREE_TRAVAIL")
                     st.markdown("**⏰ Horaires et durée du travail :**")
                     if horaires_ctx:
                         for ctx in horaires_ctx:
                             st.markdown(f"- {ctx}")
                     else:
-                        st.markdown("*Aucun horaire spécifique trouvé.*")
+                        st.markdown("*Aucun horaire spécifique trouvé*")
                     
-                    st.divider()  # Séparateur visuel entre les métiers
+                    st.divider()
                 else:
                     st.error(f"❌ **{code_rome}** - {libelle}")
                     st.divider()
             
-            # JSON brut (expander)
-            if any(s.get('success', False) for s in statuts):
-                with st.expander("📋 Voir tous les JSON bruts"):
-                    st.json([s['metier_data'] for s in statuts if s.get('success', False)])
-            def create_enriched_df(metiers_data):
-                """Crée un DataFrame avec colonnes aplaties + deux colonnes texte condensées"""
-                rows = []
-                
-                for metier in metiers_data:
-                    flat = flatten_dict(metier)
-                    
-                    # Extraction des deux listes condensées
-                    conditions = []
-                    horaires = []
-                    
-                    if 'contextesTravail' in metier:
-                        for ctx in metier['contextesTravail']:
-                            cat = ctx.get('categorie')
-                            lib = ctx.get('libelle', '').strip()
-                            if lib:
-                                if cat == "CONDITIONS_TRAVAIL":
-                                    conditions.append(lib)
-                                elif cat == "HORAIRE_ET_DUREE_TRAVAIL":
-                                    horaires.append(lib)
-                    
-                    flat['Conditions de travail et risques professionnels'] = ', '.join(conditions) if conditions else ''
-                    flat['Horaires et durée du travail'] = ', '.join(horaires) if horaires else ''
-                    
-                    rows.append(flat)
-                
-                df = pd.DataFrame(rows)
-                
-                # Optionnel : réordonner les colonnes pour que les deux nouvelles arrivent juste après code et libelle
-                cols = list(df.columns)
-                if 'code' in cols and 'libelle' in cols:
-                    idx_libelle = cols.index('libelle')
-                    new_order = (
-                        cols[:idx_libelle + 1] +
-                        ['Conditions de travail et risques professionnels', 'Horaires et durée du travail'] +
-                        [c for c in cols if c not in ['code', 'libelle',
-                                                      'Conditions de travail et risques professionnels',
-                                                      'Horaires et durée du travail']]
-                    )
-                    df = df[new_order]
-                
-                return df
-            # Téléchargements
+            # Téléchargement Excel
             reussis_data = [s['metier_data'] for s in statuts if s.get('success', False)]
             if reussis_data:
                 df = create_enriched_df(reussis_data)
@@ -229,28 +200,19 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                     df.to_excel(writer, sheet_name='Metiers_ROME', index=False)
                     
-                    # Accès au workbook et worksheet pour ajuster les largeurs
                     workbook = writer.book
                     worksheet = writer.sheets['Metiers_ROME']
                     
-                    # Auto-ajustement largeur colonnes basé sur le contenu de la ligne 1 (en-têtes)
-                    for col_idx, column in enumerate(worksheet.columns, start=1):
-                        max_length = 0
+                    # Ajustement largeur colonnes basé sur les en-têtes
+                    for col_idx, column_cells in enumerate(worksheet.columns, start=1):
                         column_letter = get_column_letter(col_idx)
+                        header_value = worksheet[f"{column_letter}1"].value
                         
-                        # On regarde surtout la cellule d'en-tête (ligne 1)
-                        header_cell = worksheet[f"{column_letter}1"]
-                        if header_cell.value:
-                            # On prend en compte la longueur + une petite marge
-                            length = len(str(header_cell.value)) + 4
-                            if length > max_length:
-                                max_length = length
-                        
-                        # Largeur minimale raisonnable
-                        adjusted_width = min(max_length, 80)  # pas plus de ~80 caractères de large
-                        worksheet.column_dimensions[column_letter].width = adjusted_width
+                        if header_value:
+                            length = len(str(header_value)) + 5  # marge
+                            width = min(length, 80)  # limite raisonnable
+                            worksheet.column_dimensions[column_letter].width = width
                     
-                    # Optionnel : figer la première ligne
                     worksheet.freeze_panes = "A2"
                 
                 excel_buffer.seek(0)
@@ -258,10 +220,10 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 st.download_button(
                     label=f"📊 Télécharger Excel ({len(reussis_data)} métiers)",
                     data=excel_buffer.getvalue(),
-                    file_name=f"ROME_{len(reussis_data)}_metiers.xlsx",
+                    file_name=f"ROME_multi_metiers_{len(reussis_data)}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-# Exemple
+
 with st.expander("💡 Exemple d'utilisation"):
     st.code("""
 A1413
@@ -269,4 +231,3 @@ M1805
 H1203
 K2110
 """, language="text")
-
