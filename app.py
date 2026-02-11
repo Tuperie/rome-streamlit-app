@@ -28,18 +28,8 @@ def get_metier(code_rome):
     
     champs = (
         "code,"
-        "domaineprofessionnel(libelle,code,granddomaine(libelle,code)),"
-        "definition,"
-        "contextestravail(libelle),"
-        "emploicadre,"
-        "formacodes(libelle,code),"
         "libelle,"
-        "secteursactivites(code,libelle),"
-        "themes(code,libelle),"
-        "transitiondemographique,"
-        "transitionecologique,"
-        "transitionecologiquedetaillee,"
-        "transitionnumerique"
+        "contextestravail(categorie,libelle),"
     )
     
     url = f"{API_BASE}/v1/metiers/metier/{code_rome}"
@@ -137,4 +127,5 @@ if st.button("🔍 Rechercher"):
                     with st.expander("Détail de l'erreur"):
                         st.code(e.response.text)
             except Exception as e:
+
                 st.error(f"❌ Erreur inattendue : {e}")
