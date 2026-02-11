@@ -178,48 +178,89 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
             if any(s.get('success', False) for s in statuts):
                 with st.expander("📋 Voir tous les JSON bruts"):
                     st.json([s['metier_data'] for s in statuts if s.get('success', False)])
-            
+            def create_enriched_df(metiers_data):
+                """Crée un DataFrame avec colonnes aplaties + deux colonnes texte condensées"""
+                rows = []
+                
+                for metier in metiers_data:
+                    flat = flatten_dict(metier)
+                    
+                    # Extraction des deux listes condensées
+                    conditions = []
+                    horaires = []
+                    
+                    if 'contextesTravail' in metier:
+                        for ctx in metier['contextesTravail']:
+                            cat = ctx.get('categorie')
+                            lib = ctx.get('libelle', '').strip()
+                            if lib:
+                                if cat == "CONDITIONS_TRAVAIL":
+                                    conditions.append(lib)
+                                elif cat == "HORAIRE_ET_DUREE_TRAVAIL":
+                                    horaires.append(lib)
+                    
+                    flat['Conditions de travail et risques professionnels'] = ', '.join(conditions) if conditions else ''
+                    flat['Horaires et durée du travail'] = ', '.join(horaires) if horaires else ''
+                    
+                    rows.append(flat)
+                
+                df = pd.DataFrame(rows)
+                
+                # Optionnel : réordonner les colonnes pour que les deux nouvelles arrivent juste après code et libelle
+                cols = list(df.columns)
+                if 'code' in cols and 'libelle' in cols:
+                    idx_libelle = cols.index('libelle')
+                    new_order = (
+                        cols[:idx_libelle + 1] +
+                        ['Conditions de travail et risques professionnels', 'Horaires et durée du travail'] +
+                        [c for c in cols if c not in ['code', 'libelle',
+                                                      'Conditions de travail et risques professionnels',
+                                                      'Horaires et durée du travail']]
+                    )
+                    df = df[new_order]
+                
+                return df
             # Téléchargements
             reussis_data = [s['metier_data'] for s in statuts if s.get('success', False)]
             if reussis_data:
-    df = create_enriched_df(reussis_data)
-    
-    excel_buffer = io.BytesIO()
-    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='Metiers_ROME', index=False)
-        
-        # Accès au workbook et worksheet pour ajuster les largeurs
-        workbook = writer.book
-        worksheet = writer.sheets['Metiers_ROME']
-        
-        # Auto-ajustement largeur colonnes basé sur le contenu de la ligne 1 (en-têtes)
-        for col_idx, column in enumerate(worksheet.columns, start=1):
-            max_length = 0
-            column_letter = get_column_letter(col_idx)
-            
-            # On regarde surtout la cellule d'en-tête (ligne 1)
-            header_cell = worksheet[f"{column_letter}1"]
-            if header_cell.value:
-                # On prend en compte la longueur + une petite marge
-                length = len(str(header_cell.value)) + 4
-                if length > max_length:
-                    max_length = length
-            
-            # Largeur minimale raisonnable
-            adjusted_width = min(max_length, 80)  # pas plus de ~80 caractères de large
-            worksheet.column_dimensions[column_letter].width = adjusted_width
-        
-        # Optionnel : figer la première ligne
-        worksheet.freeze_panes = "A2"
-    
-    excel_buffer.seek(0)
-    
-    st.download_button(
-        label=f"📊 Télécharger Excel ({len(reussis_data)} métiers)",
-        data=excel_buffer.getvalue(),
-        file_name=f"ROME_{len(reussis_data)}_metiers.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+                df = create_enriched_df(reussis_data)
+                
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    df.to_excel(writer, sheet_name='Metiers_ROME', index=False)
+                    
+                    # Accès au workbook et worksheet pour ajuster les largeurs
+                    workbook = writer.book
+                    worksheet = writer.sheets['Metiers_ROME']
+                    
+                    # Auto-ajustement largeur colonnes basé sur le contenu de la ligne 1 (en-têtes)
+                    for col_idx, column in enumerate(worksheet.columns, start=1):
+                        max_length = 0
+                        column_letter = get_column_letter(col_idx)
+                        
+                        # On regarde surtout la cellule d'en-tête (ligne 1)
+                        header_cell = worksheet[f"{column_letter}1"]
+                        if header_cell.value:
+                            # On prend en compte la longueur + une petite marge
+                            length = len(str(header_cell.value)) + 4
+                            if length > max_length:
+                                max_length = length
+                        
+                        # Largeur minimale raisonnable
+                        adjusted_width = min(max_length, 80)  # pas plus de ~80 caractères de large
+                        worksheet.column_dimensions[column_letter].width = adjusted_width
+                    
+                    # Optionnel : figer la première ligne
+                    worksheet.freeze_panes = "A2"
+                
+                excel_buffer.seek(0)
+                
+                st.download_button(
+                    label=f"📊 Télécharger Excel ({len(reussis_data)} métiers)",
+                    data=excel_buffer.getvalue(),
+                    file_name=f"ROME_{len(reussis_data)}_metiers.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 # Exemple
 with st.expander("💡 Exemple d'utilisation"):
     st.code("""
@@ -228,3 +269,4 @@ M1805
 H1203
 K2110
 """, language="text")
+
