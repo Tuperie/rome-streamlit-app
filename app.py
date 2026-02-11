@@ -39,14 +39,14 @@ def get_metier(code_rome):
     r.raise_for_status()
     return r.json()
 
-def extract_contextes_by_categorie(contextes, categorie):
-    """Extrait les libellés des contextes pour une catégorie donnée"""
-    result = []
-    if 'contextestravail' in contextes:
-        for ctx in contextes['contextestravail']:
+def get_contextes_by_categorie(metier, categorie):
+    """Extrait les libellés pour une catégorie spécifique"""
+    contextes = []
+    if 'contextestravail' in metier:
+        for ctx in metier['contextestravail']:
             if ctx.get('categorie') == categorie:
-                result.append(ctx.get('libelle', ''))
-    return result
+                contextes.append(ctx.get('libelle', ''))
+    return contextes
 
 def flatten_dict(d, parent_key='', sep='_'):
     """Aplatit un dictionnaire imbriqué pour l'Excel"""
@@ -81,7 +81,7 @@ def json_to_df(metiers_data):
 # ────────────────────────────────────────────────
 
 st.title("🔎 Recherche Multi-Métiers ROME")
-st.markdown("**Entrez plusieurs codes ROME (1 par ligne) et téléchargez le résultat en Excel**")
+st.markdown("**Entrez plusieurs codes ROME (1 par ligne) et consultez les résultats détaillés**")
 
 # Zone de saisie multi-lignes
 codes_input = st.text_area(
@@ -111,104 +111,110 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                         metier = get_metier(code_rome)
                         libelle = metier.get('libelle', 'Sans libellé')
                         metiers_data.append(metier)
-                        statuts.append(f"✅ **{libelle}** ({code_rome})")
+                        statuts.append({
+                            'code': code_rome,
+                            'libelle': libelle,
+                            'metier_data': metier,
+                            'success': True
+                        })
                 except requests.HTTPError:
-                    statuts.append(f"❌ **{code_rome}** (non trouvé)")
+                    statuts.append({
+                        'code': code_rome,
+                        'libelle': 'Non trouvé',
+                        'success': False
+                    })
                 except Exception as e:
-                    statuts.append(f"❌ **{code_rome}** (erreur: {str(e)[:30]}...)")
+                    statuts.append({
+                        'code': code_rome,
+                        'libelle': f'Erreur: {str(e)[:30]}',
+                        'success': False
+                    })
                 
                 progress_bar.progress((i + 1) / len(codes_list))
             
-            # Affichage des résultats
-            st.subheader("📋 Résultats de la recherche")
+            # Affichage des résultats - CHAQUE MÉTIER avec ses contextes
+            st.subheader("📋 Résultats détaillés par métier")
             
-            col1, col2 = st.columns(2)
+            reussis = sum(1 for s in statuts if s.get('success', False))
+            col1, col2 = st.columns([3, 1])
             with col1:
-                st.markdown("**✅ Métiers trouvés :**")
-                for statut in statuts:
-                    st.markdown(statut)
-            
+                st.metric("Taux de réussite", f"{reussis}/{len(codes_list)}")
             with col2:
-                reussis = sum(1 for s in statuts if s.startswith("✅"))
-                st.metric("Taux de réussite", f"{reussis}/{len(codes_list)}", f"{reussis/len(codes_list)*100:.0f}%")
+                st.metric("Temps total", f"{len(codes_list)*2:.0f}s estimés")
             
-            # Extraction des contextes spécifiques
-            if any("✅" in s for s in statuts):
-                st.subheader("⚙️ Conditions de travail & Horaires")
+            # Affichage par métier
+            for statut in statuts:
+                code_rome = statut['code']
+                libelle = statut['libelle']
                 
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("### 🏭 **Conditions de travail et risques professionnels**")
-                    conditions_travail = []
-                    for metier in metiers_data:
-                        ctx = extract_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
-                        conditions_travail.extend(ctx)
+                if statut.get('success', False):
+                    st.success(f"✅ **{libelle}** ({code_rome})")
                     
-                    if conditions_travail:
-                        for libelle in conditions_travail:
-                            st.markdown(f"- **{libelle}**")
+                    # Conditions de travail pour CE métier
+                    conditions_ctx = get_contextes_by_categorie(statut['metier_data'], "CONDITIONS_TRAVAIL")
+                    if conditions_ctx:
+                        st.markdown("**🏭 Conditions de travail et risques professionnels :**")
+                        for ctx in conditions_ctx:
+                            st.markdown(f"• {ctx}")
                     else:
-                        st.info("Aucun contexte CONDITIONS_TRAVAIL trouvé")
-                
-                with col2:
-                    st.markdown("### ⏰ **Horaires et durée du travail**")
-                    horaires_travail = []
-                    for metier in metiers_data:
-                        ctx = extract_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
-                        horaires_travail.extend(ctx)
+                        st.markdown("**🏭** *Aucune condition de travail*")
                     
-                    if horaires_travail:
-                        for libelle in horaires_travail:
-                            st.markdown(f"- **{libelle}**")
+                    # Horaires pour CE métier
+                    horaires_ctx = get_contextes_by_categorie(statut['metier_data'], "HORAIRE_ET_DUREE_TRAVAIL")
+                    if horaires_ctx:
+                        st.markdown("**⏰ Horaires et durée du travail :**")
+                        for ctx in horaires_ctx:
+                            st.markdown(f"• {ctx}")
                     else:
-                        st.info("Aucun contexte HORAIRE_ET_DUREE_TRAVAIL trouvé")
+                        st.markdown("**⏰** *Aucun horaire spécifique*")
+                    
+                    st.divider()  # Séparateur visuel entre les métiers
+                else:
+                    st.error(f"❌ **{code_rome}** - {libelle}")
+                    st.divider()
             
             # JSON brut (expander)
-            if metiers_data:
+            if any(s.get('success', False) for s in statuts):
                 with st.expander("📋 Voir tous les JSON bruts"):
-                    st.json(metiers_data)
+                    st.json([s['metier_data'] for s in statuts if s.get('success', False)])
             
             # Téléchargements
-            if metiers_data:
-                df = json_to_df(metiers_data)
+            reussis_data = [s['metier_data'] for s in statuts if s.get('success', False)]
+            if reussis_data:
+                df = json_to_df(reussis_data)
                 
                 # Excel multi-feuilles
                 excel_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                     df.to_excel(writer, sheet_name='Tous_les_metiers', index=False)
-                    
-                    # Feuille récap contextes
-                    contextes_df = []
-                    for metier in metiers_data:
-                        row = {'code': metier.get('code', ''), 'libelle': metier.get('libelle', '')}
-                        
-                        # Conditions de travail
-                        ctx_cond = extract_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
-                        row['conditions_travail'] = "; ".join(ctx_cond)
-                        
-                        # Horaires
-                        ctx_horaires = extract_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
-                        row['horaires_travail'] = "; ".join(ctx_horaires)
-                        
-                        contextes_df.append(row)
-                    
-                    pd.DataFrame(contextes_df).to_excel(writer, sheet_name='Récap_Contextes', index=False)
                 
                 excel_buffer.seek(0)
                 
                 st.download_button(
-                    label=f"📊 Télécharger Excel ({len(metiers_data)} métiers)",
+                    label=f"📊 Télécharger Excel ({len(reussis_data)} métiers)",
                     data=excel_buffer.getvalue(),
-                    file_name=f"ROME_{len(metiers_data)}_metiers.xlsx",
+                    file_name=f"ROME_{len(reussis_data)}_metiers.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
 
 # Exemple
 with st.expander("💡 Exemple d'utilisation"):
     st.code("""
-A1413
-M1805
-H1203
-K2110
+A1413    ← Chef de projet numérique
+          ↓
+✅ Chef de projet numérique (A1413)
+🏭 Conditions de travail :
+• Risques de chutes
+• Bruit
+⏰ Horaires :
+• Travail de nuit
+• Horaires irréguliers
+
+M1805    ← Développeur web
+          ↓
+✅ Développeur web (M1805)
+🏭 Conditions de travail :
+• Poste sédentaire
+⏰ Horaires :
+• 35h/semaine
 """, language="text")
