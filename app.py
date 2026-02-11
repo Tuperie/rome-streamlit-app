@@ -45,7 +45,9 @@ def get_contextes_by_categorie(metier, categorie):
     if 'contextestravail' in metier:
         for ctx in metier['contextestravail']:
             if ctx.get('categorie') == categorie:
-                contextes.append(ctx.get('libelle', ''))
+                libelle = ctx.get('libelle', '').strip()
+                if libelle:  # Éviter les vides
+                    contextes.append(libelle)
     return contextes
 
 def flatten_dict(d, parent_key='', sep='_'):
@@ -77,7 +79,7 @@ def json_to_df(metiers_data):
     return pd.DataFrame(flat_data)
 
 # ────────────────────────────────────────────────
-#                  INTERFACE STREAMLIT
+# INTERFACE STREAMLIT
 # ────────────────────────────────────────────────
 
 st.title("🔎 Recherche Multi-Métiers ROME")
@@ -85,7 +87,7 @@ st.markdown("**Entrez plusieurs codes ROME (1 par ligne) et consultez les résul
 
 # Zone de saisie multi-lignes
 codes_input = st.text_area(
-    "Codes ROME (un par ligne, ex: A1413\nM1805\nH1203)", 
+    "Codes ROME (un par ligne, ex: A1413\nM1805\nH1203)",
     height=150,
     placeholder="A1413\nM1805\nH1203"
 )
@@ -94,7 +96,7 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
     if not codes_input.strip():
         st.warning("⚠️ Veuillez entrer au moins un code ROME.")
     else:
-        codes_list = [code.strip().upper() for code in codes_input.strip().split('\n') if code.strip()]
+        codes_list = list(set([code.strip().upper() for code in codes_input.strip().split('\n') if code.strip()]))  # Déduplication
         
         if not codes_list:
             st.warning("⚠️ Aucun code ROME valide détecté.")
@@ -107,16 +109,15 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
             
             for i, code_rome in enumerate(codes_list):
                 try:
-                    with st.spinner(f"Recherche {code_rome}..."):
-                        metier = get_metier(code_rome)
-                        libelle = metier.get('libelle', 'Sans libellé')
-                        metiers_data.append(metier)
-                        statuts.append({
-                            'code': code_rome,
-                            'libelle': libelle,
-                            'metier_data': metier,
-                            'success': True
-                        })
+                    metier = get_metier(code_rome)
+                    libelle = metier.get('libelle', 'Sans libellé')
+                    metiers_data.append(metier)
+                    statuts.append({
+                        'code': code_rome,
+                        'libelle': libelle,
+                        'metier_data': metier,
+                        'success': True
+                    })
                 except requests.HTTPError:
                     statuts.append({
                         'code': code_rome,
@@ -152,21 +153,21 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                     
                     # Conditions de travail pour CE métier
                     conditions_ctx = get_contextes_by_categorie(statut['metier_data'], "CONDITIONS_TRAVAIL")
+                    st.markdown("**🏭 Conditions de travail et risques professionnels :**")
                     if conditions_ctx:
-                        st.markdown("**🏭 Conditions de travail et risques professionnels :**")
                         for ctx in conditions_ctx:
-                            st.markdown(f"• {ctx}")
+                            st.markdown(f"- {ctx}")
                     else:
-                        st.markdown("**🏭** *Aucune condition de travail*")
+                        st.markdown("*Aucune condition de travail trouvée.*")
                     
                     # Horaires pour CE métier
                     horaires_ctx = get_contextes_by_categorie(statut['metier_data'], "HORAIRE_ET_DUREE_TRAVAIL")
+                    st.markdown("**⏰ Horaires et durée du travail :**")
                     if horaires_ctx:
-                        st.markdown("**⏰ Horaires et durée du travail :**")
                         for ctx in horaires_ctx:
-                            st.markdown(f"• {ctx}")
+                            st.markdown(f"- {ctx}")
                     else:
-                        st.markdown("**⏰** *Aucun horaire spécifique*")
+                        st.markdown("*Aucun horaire spécifique trouvé.*")
                     
                     st.divider()  # Séparateur visuel entre les métiers
                 else:
@@ -183,10 +184,10 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
             if reussis_data:
                 df = json_to_df(reussis_data)
                 
-                # Excel multi-feuilles
+                # Excel multi-feuilles (ici une seule pour simplicité)
                 excel_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    df.to_excel(writer, sheet_name='Tous_les_metiers', index=False)
+                    df.to_excel(writer, sheet_name='Tous_les_metiers', index=False, freeze_panes=(1, 0))
                 
                 excel_buffer.seek(0)
                 
@@ -200,21 +201,15 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
 # Exemple
 with st.expander("💡 Exemple d'utilisation"):
     st.code("""
-A1413    ← Chef de projet numérique
-          ↓
-✅ Chef de projet numérique (A1413)
-🏭 Conditions de travail :
-• Risques de chutes
-• Bruit
-⏰ Horaires :
-• Travail de nuit
-• Horaires irréguliers
-
-M1805    ← Développeur web
-          ↓
-✅ Développeur web (M1805)
-🏭 Conditions de travail :
-• Poste sédentaire
-⏰ Horaires :
-• 35h/semaine
+A1413
+M1805
+H1203
+K2110
 """, language="text")
+
+st.info("""\
+**Notes importantes :**
+- Le fichier Excel contient tous les champs aplatis (ex: `contextestravail_0_categorie`, `contextestravail_0_libelle`, etc.).
+- Dépendances nécessaires :  
+  `pip install streamlit requests pandas openpyxl`
+""")
