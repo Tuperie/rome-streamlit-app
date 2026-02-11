@@ -42,8 +42,8 @@ def get_metier(code_rome):
 def get_contextes_by_categorie(metier, categorie):
     """Extrait les libellés pour une catégorie spécifique"""
     contextes = []
-    if 'contextestravail' in metier:
-        for ctx in metier['contextestravail']:
+    if 'contextesTravail' in metier:
+        for ctx in metier['contextesTravail']:
             if ctx.get('categorie') == categorie:
                 libelle = ctx.get('libelle', '').strip()
                 if libelle:  # Éviter les vides
@@ -213,3 +213,4 @@ st.info("""\
 - Dépendances nécessaires :  
   `pip install streamlit requests pandas openpyxl`
 """)
+
