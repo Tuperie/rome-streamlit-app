@@ -182,22 +182,44 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
             # Téléchargements
             reussis_data = [s['metier_data'] for s in statuts if s.get('success', False)]
             if reussis_data:
-                df = json_to_df(reussis_data)
-                
-                # Excel multi-feuilles (ici une seule pour simplicité)
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    df.to_excel(writer, sheet_name='Tous_les_metiers', index=False, freeze_panes=(1, 0))
-                
-                excel_buffer.seek(0)
-                
-                st.download_button(
-                    label=f"📊 Télécharger Excel ({len(reussis_data)} métiers)",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"ROME_{len(reussis_data)}_metiers.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-
+    df = create_enriched_df(reussis_data)
+    
+    excel_buffer = io.BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Metiers_ROME', index=False)
+        
+        # Accès au workbook et worksheet pour ajuster les largeurs
+        workbook = writer.book
+        worksheet = writer.sheets['Metiers_ROME']
+        
+        # Auto-ajustement largeur colonnes basé sur le contenu de la ligne 1 (en-têtes)
+        for col_idx, column in enumerate(worksheet.columns, start=1):
+            max_length = 0
+            column_letter = get_column_letter(col_idx)
+            
+            # On regarde surtout la cellule d'en-tête (ligne 1)
+            header_cell = worksheet[f"{column_letter}1"]
+            if header_cell.value:
+                # On prend en compte la longueur + une petite marge
+                length = len(str(header_cell.value)) + 4
+                if length > max_length:
+                    max_length = length
+            
+            # Largeur minimale raisonnable
+            adjusted_width = min(max_length, 80)  # pas plus de ~80 caractères de large
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        # Optionnel : figer la première ligne
+        worksheet.freeze_panes = "A2"
+    
+    excel_buffer.seek(0)
+    
+    st.download_button(
+        label=f"📊 Télécharger Excel ({len(reussis_data)} métiers)",
+        data=excel_buffer.getvalue(),
+        file_name=f"ROME_{len(reussis_data)}_metiers.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 # Exemple
 with st.expander("💡 Exemple d'utilisation"):
     st.code("""
@@ -206,11 +228,3 @@ M1805
 H1203
 K2110
 """, language="text")
-
-st.info("""\
-**Notes importantes :**
-- Le fichier Excel contient tous les champs aplatis (ex: `contextestravail_0_categorie`, `contextestravail_0_libelle`, etc.).
-- Dépendances nécessaires :  
-  `pip install streamlit requests pandas openpyxl`
-""")
-
