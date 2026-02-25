@@ -70,97 +70,36 @@ def flatten_dict(d, parent_key='', sep='_'):
             
     return dict(items)
 
-def is_fipu(conditions_str: str, horaires_str: str) -> str:
-    """
-    Retourne "OUI" si au moins une des conditions FIPU est détectée,
-    "NON" sinon. Recherche insensible à la casse.
-    """
-    if not conditions_str and not horaires_str:
-        return "NON"
-    
-    # Liste des expressions à détecter (exactement comme dans ta formule)
-    mots_fipu = [
-        "En altitude",
-        "En milieu nucléaire",
-        "En milieu hyperbare",
-        "En milieu exigu ou confiné",
-        "En grande hauteur",
-        "En zone frigorifique",
-        "Exposition à de hautes températures",
-        "En environnement climatique difficile",
-        "Manipulation d'un engin, équipement ou outil dangereux",
-        "Port et manipulation de charges lourdes ou encombrantes",
-        "Position pénible",
-        "Station debout prolongée",
-        "Travail répétitif ou cadence imposée",
-        "En environnement bruyant",
-        "Travail dans des environnements hostiles et dangereux",
-        "Exposition à de basses températures",
-        "Exposition possible à gaz, aérosol, fumées …",
-        "Station assise prolongée",
-        "Risques de chutes",
-        "Travail dans des milieux difficiles et exigeants pour l'humain",
-        # Horaires
-        "Travail posté (2x8, 3x8, 5x8, etc.)",
-        "Travail de nuit",
-        "Travail en astreinte",
-        "Travail en horaires décalés",
-        "Travail par roulement"
-    ]
-    
-    texte_complet = (conditions_str + " " + horaires_str).lower()
-    
-    for mot in mots_fipu:
-        if mot.lower() in texte_complet:
-            return "OUI"
-    
-    return "NON"
-
 def create_enriched_df(metiers_data):
-    """
-    Crée un DataFrame avec :
-    - Colonnes aplaties (flatten_dict)
-    - Deux colonnes condensées : Conditions + Horaires
-    - Une colonne 'FIPU ?' : "OUI" ou "NON" selon les critères d'usure / pénibilité
-    """
+    """Crée un DataFrame avec colonnes aplaties + deux colonnes condensées"""
     rows = []
     
     for metier in metiers_data:
         flat = flatten_dict(metier)
         
-        # Extraction des libellés par catégorie
+        # Extraction des deux listes condensées
         conditions = get_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
-        horaires   = get_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
+        horaires = get_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
         
-        # Jointure avec virgule + espace
-        conditions_joined = ', '.join(conditions) if conditions else ''
-        horaires_joined   = ', '.join(horaires)   if horaires   else ''
-        
-        flat['Conditions de travail et risques professionnels'] = conditions_joined
-        flat['Horaires et durée du travail'] = horaires_joined
-        
-        # Détection FIPU (pénibilité / usure)
-        flat['FIPU'] = "OUI" if is_fipu(conditions_joined, horaires_joined) else "NON"
+        flat['Conditions de travail et risques professionnels'] = ', '.join(conditions) if conditions else ''
+        flat['Horaires et durée du travail'] = ', '.join(horaires) if horaires else ''
         
         rows.append(flat)
     
     df = pd.DataFrame(rows)
     
-    # Ordre des colonnes souhaité
-    desired_order = [
-        'code',
-        'libelle',
-        'FIPU',                                           # ← nouvelle colonne
-        'Conditions de travail et risques professionnels',
-        'Horaires et durée du travail'
-    ]
+    # Réordonner : code → libelle → conditions → horaires → reste
+    desired_order = ['code', 'libelle']
+    if 'Conditions de travail et risques professionnels' in df.columns:
+        desired_order.append('Conditions de travail et risques professionnels')
+    if 'Horaires et durée du travail' in df.columns:
+        desired_order.append('Horaires et durée du travail')
     
-    # Colonnes restantes (le reste des champs aplatis)
     remaining_cols = [c for c in df.columns if c not in desired_order]
-    
     final_order = desired_order + remaining_cols
     
     return df[final_order]
+
 # ────────────────────────────────────────────────
 # INTERFACE STREAMLIT
 # ────────────────────────────────────────────────
@@ -272,31 +211,21 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 libelle = statut['libelle']
                 
                 if statut.get('success', False):
-                    metier_data = statut['metier_data']
+                    st.success(f"✅ **{libelle}** ({code_rome})")
                     
-                    conditions_joined = ', '.join(get_contextes_by_categorie(metier_data, "CONDITIONS_TRAVAIL"))
-                    horaires_joined   = ', '.join(get_contextes_by_categorie(metier_data, "HORAIRE_ET_DUREE_TRAVAIL"))
-                    
-                    fipu = is_fipu(conditions_joined, horaires_joined)
-                    
-                    # Affichage avec FIPU en évidence
-                    if fipu == "OUI":
-                        st.success(f"✅ **{libelle}** ({code_rome})   →   **FIPU : OUI** ✅")
-                    else:
-                        st.success(f"✅ **{libelle}** ({code_rome})   →   FIPU : NON")
-                    
-                    # Le reste (conditions et horaires) reste identique
+                    conditions_ctx = get_contextes_by_categorie(statut['metier_data'], "CONDITIONS_TRAVAIL")
                     st.markdown("**🏭 Conditions de travail et risques professionnels :**")
-                    if conditions_joined:
-                        for item in conditions_joined.split(', '):
-                            st.markdown(f"- {item}")
+                    if conditions_ctx:
+                        for ctx in conditions_ctx:
+                            st.markdown(f"- {ctx}")
                     else:
                         st.markdown("*Aucune condition trouvée*")
                     
+                    horaires_ctx = get_contextes_by_categorie(statut['metier_data'], "HORAIRE_ET_DUREE_TRAVAIL")
                     st.markdown("**⏰ Horaires et durée du travail :**")
-                    if horaires_joined:
-                        for item in horaires_joined.split(', '):
-                            st.markdown(f"- {item}")
+                    if horaires_ctx:
+                        for ctx in horaires_ctx:
+                            st.markdown(f"- {ctx}")
                     else:
                         st.markdown("*Aucun horaire spécifique trouvé*")
                     
@@ -345,4 +274,5 @@ M1805
 H1203
 K2110
 """, language="text")
+
 
