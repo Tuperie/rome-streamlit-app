@@ -70,52 +70,6 @@ def flatten_dict(d, parent_key='', sep='_'):
             
     return dict(items)
 
-def create_enriched_df(metiers_data):
-    """
-    Crée un DataFrame avec :
-    - Colonnes aplaties (flatten_dict)
-    - Deux colonnes condensées : Conditions + Horaires
-    - Une colonne 'FIPU ?' : "OUI" ou "NON" selon les critères d'usure / pénibilité
-    """
-    rows = []
-    
-    for metier in metiers_data:
-        flat = flatten_dict(metier)
-        
-        # Extraction des libellés par catégorie
-        conditions = get_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
-        horaires   = get_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
-        
-        # Jointure avec virgule + espace
-        conditions_joined = ', '.join(conditions) if conditions else ''
-        horaires_joined   = ', '.join(horaires)   if horaires   else ''
-        
-        flat['Conditions de travail et risques professionnels'] = conditions_joined
-        flat['Horaires et durée du travail'] = horaires_joined
-        
-        # Détection FIPU (pénibilité / usure)
-        flat['FIPU'] = "OUI" if is_fipu(conditions_joined, horaires_joined) else "NON"
-        
-        rows.append(flat)
-    
-    df = pd.DataFrame(rows)
-    
-    # Ordre des colonnes souhaité
-    desired_order = [
-        'code',
-        'libelle',
-        'FIPU',                                           # ← nouvelle colonne
-        'Conditions de travail et risques professionnels',
-        'Horaires et durée du travail'
-    ]
-    
-    # Colonnes restantes (le reste des champs aplatis)
-    remaining_cols = [c for c in df.columns if c not in desired_order]
-    
-    final_order = desired_order + remaining_cols
-    
-    return df[final_order]
-
 def is_fipu(conditions_str: str, horaires_str: str) -> str:
     """
     Retourne "OUI" si au moins une des conditions FIPU est détectée,
@@ -162,6 +116,51 @@ def is_fipu(conditions_str: str, horaires_str: str) -> str:
     
     return "NON"
 
+def create_enriched_df(metiers_data):
+    """
+    Crée un DataFrame avec :
+    - Colonnes aplaties (flatten_dict)
+    - Deux colonnes condensées : Conditions + Horaires
+    - Une colonne 'FIPU ?' : "OUI" ou "NON" selon les critères d'usure / pénibilité
+    """
+    rows = []
+    
+    for metier in metiers_data:
+        flat = flatten_dict(metier)
+        
+        # Extraction des libellés par catégorie
+        conditions = get_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
+        horaires   = get_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
+        
+        # Jointure avec virgule + espace
+        conditions_joined = ', '.join(conditions) if conditions else ''
+        horaires_joined   = ', '.join(horaires)   if horaires   else ''
+        
+        flat['Conditions de travail et risques professionnels'] = conditions_joined
+        flat['Horaires et durée du travail'] = horaires_joined
+        
+        # Détection FIPU (pénibilité / usure)
+        flat['FIPU'] = "OUI" if is_fipu(conditions_joined, horaires_joined) else "NON"
+        
+        rows.append(flat)
+    
+    df = pd.DataFrame(rows)
+    
+    # Ordre des colonnes souhaité
+    desired_order = [
+        'code',
+        'libelle',
+        'FIPU',                                           # ← nouvelle colonne
+        'Conditions de travail et risques professionnels',
+        'Horaires et durée du travail'
+    ]
+    
+    # Colonnes restantes (le reste des champs aplatis)
+    remaining_cols = [c for c in df.columns if c not in desired_order]
+    
+    final_order = desired_order + remaining_cols
+    
+    return df[final_order]
 # ────────────────────────────────────────────────
 # INTERFACE STREAMLIT
 # ────────────────────────────────────────────────
@@ -346,3 +345,4 @@ M1805
 H1203
 K2110
 """, language="text")
+
