@@ -1,5 +1,3 @@
-New
-
 import streamlit as st
 import requests
 import pandas as pd
@@ -348,4 +346,3 @@ M1805
 H1203
 K2110
 """, language="text")
-
