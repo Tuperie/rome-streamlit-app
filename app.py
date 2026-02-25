@@ -128,6 +128,52 @@ def create_enriched_df(metiers_data):
     
     return df[final_order]
 
+def is_fipu(conditions_str: str, horaires_str: str) -> str:
+    """
+    Retourne "OUI" si au moins une des conditions FIPU est détectée,
+    "NON" sinon. Recherche insensible à la casse.
+    """
+    if not conditions_str and not horaires_str:
+        return "NON"
+    
+    # Liste des expressions à détecter (exactement comme dans ta formule)
+    mots_fipu = [
+        "En altitude",
+        "En milieu nucléaire",
+        "En milieu hyperbare",
+        "En milieu exigu ou confiné",
+        "En grande hauteur",
+        "En zone frigorifique",
+        "Exposition à de hautes températures",
+        "En environnement climatique difficile",
+        "Manipulation d'un engin, équipement ou outil dangereux",
+        "Port et manipulation de charges lourdes ou encombrantes",
+        "Position pénible",
+        "Station debout prolongée",
+        "Travail répétitif ou cadence imposée",
+        "En environnement bruyant",
+        "Travail dans des environnements hostiles et dangereux",
+        "Exposition à de basses températures",
+        "Exposition possible à gaz, aérosol, fumées …",
+        "Station assise prolongée",
+        "Risques de chutes",
+        "Travail dans des milieux difficiles et exigeants pour l'humain",
+        # Horaires
+        "Travail posté (2x8, 3x8, 5x8, etc.)",
+        "Travail de nuit",
+        "Travail en astreinte",
+        "Travail en horaires décalés",
+        "Travail par roulement"
+    ]
+    
+    texte_complet = (conditions_str + " " + horaires_str).lower()
+    
+    for mot in mots_fipu:
+        if mot.lower() in texte_complet:
+            return "OUI"
+    
+    return "NON"
+
 # ────────────────────────────────────────────────
 # INTERFACE STREAMLIT
 # ────────────────────────────────────────────────
@@ -239,23 +285,33 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 libelle = statut['libelle']
                 
                 if statut.get('success', False):
-                    st.success(f"✅ **{libelle}** ({code_rome})")
+                    metier_data = statut['metier_data']
                     
-                    conditions_ctx = get_contextes_by_categorie(statut['metier_data'], "CONDITIONS_TRAVAIL")
+                    conditions_joined = ', '.join(get_contextes_by_categorie(metier_data, "CONDITIONS_TRAVAIL"))
+                    horaires_joined   = ', '.join(get_contextes_by_categorie(metier_data, "HORAIRE_ET_DUREE_TRAVAIL"))
+                    
+                    fipu = is_fipu(conditions_joined, horaires_joined)
+                    
+                    # Affichage avec FIPU en évidence
+                    if fipu == "OUI":
+                        st.success(f"✅ **{libelle}** ({code_rome})   →   **FIPU : OUI** ⚠️")
+                    else:
+                        st.success(f"✅ **{libelle}** ({code_rome})   →   FIPU : NON")
+                    
+                    # Le reste (conditions et horaires) reste identique
                     st.markdown("**🏭 Conditions de travail et risques professionnels :**")
-                    if conditions_ctx:
-                        for ctx in conditions_ctx:
-                            st.markdown(f"- {ctx}")
+                    if conditions_joined:
+                        for item in conditions_joined.split(', '):
+                            st.markdown(f"- {item}")
                     else:
-                        st.markdown("*Aucune condition trouvée*")
+                        st.markdown("*Aucune*")
                     
-                    horaires_ctx = get_contextes_by_categorie(statut['metier_data'], "HORAIRE_ET_DUREE_TRAVAIL")
                     st.markdown("**⏰ Horaires et durée du travail :**")
-                    if horaires_ctx:
-                        for ctx in horaires_ctx:
-                            st.markdown(f"- {ctx}")
+                    if horaires_joined:
+                        for item in horaires_joined.split(', '):
+                            st.markdown(f"- {item}")
                     else:
-                        st.markdown("*Aucun horaire spécifique trouvé*")
+                        st.markdown("*Aucun*")
                     
                     st.divider()
                 else:
