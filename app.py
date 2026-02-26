@@ -246,47 +246,47 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
             
             # Détails par métier
             @st.fragment(run_on_refresh=False)
-                def show_details():
-                    st.subheader("📋 Détails par métier")
+            def show_details():
+                st.subheader("📋 Détails par métier")
+                
+                for statut in statuts:
+                    code_rome = statut['code']
+                    libelle = statut['libelle']
                     
-                    for statut in statuts:
-                        code_rome = statut['code']
-                        libelle = statut['libelle']
+                    if statut.get('success', False):
+                        metier_data = statut['metier_data']
                         
-                        if statut.get('success', False):
-                            metier_data = statut['metier_data']
-                            
-                            conditions_joined = ', '.join(get_contextes_by_categorie(metier_data, "CONDITIONS_TRAVAIL"))
-                            horaires_joined   = ', '.join(get_contextes_by_categorie(metier_data, "HORAIRE_ET_DUREE_TRAVAIL"))
-                            
-                            fipu_oui = is_fipu(conditions_joined, horaires_joined)
-                            
-                            # Ligne métier + FIPU sur une nouvelle ligne
-                            st.success(f"✅ **{libelle}** ({code_rome})")
-                            
-                            if fipu_oui:
-                                st.success("**FIPU : OUI** ✅")
-                            else:
-                                st.error("**FIPU : NON** ❌")
-                            
-                            st.markdown("**🏭 Conditions de travail et risques professionnels :**")
-                            if conditions_joined:
-                                for item in conditions_joined.split(', '):
-                                    st.markdown(f"- {item}")
-                            else:
-                                st.markdown("*Aucune condition trouvée*")
-                            
-                            st.markdown("**⏰ Horaires et durée du travail :**")
-                            if horaires_joined:
-                                for item in horaires_joined.split(', '):
-                                    st.markdown(f"- {item}")
-                            else:
-                                st.markdown("*Aucun horaire spécifique trouvé*")
-                            
-                            st.divider()
+                        conditions_joined = ', '.join(get_contextes_by_categorie(metier_data, "CONDITIONS_TRAVAIL"))
+                        horaires_joined   = ', '.join(get_contextes_by_categorie(metier_data, "HORAIRE_ET_DUREE_TRAVAIL"))
+                        
+                        fipu_oui = is_fipu(conditions_joined, horaires_joined)
+                        
+                        # Ligne métier + FIPU sur une nouvelle ligne
+                        st.success(f"✅ **{libelle}** ({code_rome})")
+                        
+                        if fipu_oui:
+                            st.success("**FIPU : OUI** ✅")
                         else:
-                            st.error(f"❌ **{code_rome}** - {libelle}")
-                            st.divider()
+                            st.error("**FIPU : NON** ❌")
+                        
+                        st.markdown("**🏭 Conditions de travail et risques professionnels :**")
+                        if conditions_joined:
+                            for item in conditions_joined.split(', '):
+                                st.markdown(f"- {item}")
+                        else:
+                            st.markdown("*Aucune condition trouvée*")
+                        
+                        st.markdown("**⏰ Horaires et durée du travail :**")
+                        if horaires_joined:
+                            for item in horaires_joined.split(', '):
+                                st.markdown(f"- {item}")
+                        else:
+                            st.markdown("*Aucun horaire spécifique trouvé*")
+                        
+                        st.divider()
+                    else:
+                        st.error(f"❌ **{code_rome}** - {libelle}")
+                        st.divider()
             if 'statuts' in locals() and statuts:
                 show_details()
             # 2 ème bouton de téléchargement Excel
@@ -329,3 +329,4 @@ M1805
 H1203
 K2110
 """, language="text")
+
