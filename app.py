@@ -159,7 +159,11 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
     if not codes_input.strip():
         st.warning("⚠️ Veuillez entrer au moins un code ROME.")
     else:
-        codes_list = list(set(code.strip().upper() for code in codes_input.strip().split('\n') if code.strip()))
+        codes_list = [
+            code.strip().upper()
+            for code in codes_input.strip().split('\n')
+            if code.strip()
+        ]
         
         if not codes_list:
             st.warning("⚠️ Aucun code ROME valide détecté.")
@@ -329,5 +333,6 @@ M1805
 H1203
 K2110
 """, language="text")
+
 
 
