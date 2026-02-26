@@ -212,7 +212,7 @@ if st.session_state.search_done:
     reussis = sum(1 for s in statuts if s.get('success', False))
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.metric("Métiers trouvés", f"{reussis} / {len(codes_list)}")
+        st.metric("Métiers trouvés", f"{reussis} / {len(st.session_state.codes_list)}")
     
     if reussis_data:
         df = create_enriched_df(reussis_data)
@@ -329,4 +329,5 @@ M1805
 H1203
 K2110
 """, language="text")
+
 
