@@ -159,11 +159,17 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
     if not codes_input.strip():
         st.warning("⚠️ Veuillez entrer au moins un code ROME.")
     else:
-        codes_list = [
-            code.strip().upper()
-            for code in codes_input.strip().split('\n')
-            if code.strip()
-        ]
+        seen = set()
+        codes_list = []
+        for line in codes_input.strip().split('\n'):
+            code = line.strip().upper()
+            if code and code not in seen:
+                seen.add(code)
+                codes_list.append(code)
+
+        original_len = len([code.strip().upper() for code in codes_input.strip().split('\n') if code.strip()])
+        if len(codes_list) < original_len:
+            st.info(f"ℹ️ {original_len - len(codes_list)} doublon(s) ignoré(s) (ordre conservé)")
         
         if not codes_list:
             st.warning("⚠️ Aucun code ROME valide détecté.")
@@ -333,6 +339,3 @@ M1805
 H1203
 K2110
 """, language="text")
-
-
-
