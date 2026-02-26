@@ -4,6 +4,11 @@ import pandas as pd
 import io
 from openpyxl.utils import get_column_letter
 
+if 'search_done' not in st.session_state:
+    st.session_state.search_done = False
+    st.session_state.statuts = []
+    st.session_state.codes_list = []
+
 CLIENT_ID    = st.secrets["CLIENT_ID"]
 CLIENT_SECRET = st.secrets["CLIENT_SECRET"]
 
@@ -240,46 +245,82 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
             st.divider()
             
             # Détails par métier
-            st.subheader("📋 Détails par métier")
-            
-            for statut in statuts:
-                code_rome = statut['code']
-                libelle = statut['libelle']
+            @st.fragment(run_on_refresh=False)
+                def show_details():
+                    st.subheader("📋 Détails par métier")
+                    
+                    for statut in statuts:
+                        code_rome = statut['code']
+                        libelle = statut['libelle']
+                        
+                        if statut.get('success', False):
+                            metier_data = statut['metier_data']
+                            
+                            conditions_joined = ', '.join(get_contextes_by_categorie(metier_data, "CONDITIONS_TRAVAIL"))
+                            horaires_joined   = ', '.join(get_contextes_by_categorie(metier_data, "HORAIRE_ET_DUREE_TRAVAIL"))
+                            
+                            fipu_oui = is_fipu(conditions_joined, horaires_joined)
+                            
+                            # Ligne métier + FIPU sur une nouvelle ligne
+                            st.success(f"✅ **{libelle}** ({code_rome})")
+                            
+                            if fipu_oui:
+                                st.success("**FIPU : OUI** ✅")
+                            else:
+                                st.error("**FIPU : NON** ❌")
+                            
+                            st.markdown("**🏭 Conditions de travail et risques professionnels :**")
+                            if conditions_joined:
+                                for item in conditions_joined.split(', '):
+                                    st.markdown(f"- {item}")
+                            else:
+                                st.markdown("*Aucune condition trouvée*")
+                            
+                            st.markdown("**⏰ Horaires et durée du travail :**")
+                            if horaires_joined:
+                                for item in horaires_joined.split(', '):
+                                    st.markdown(f"- {item}")
+                            else:
+                                st.markdown("*Aucun horaire spécifique trouvé*")
+                            
+                            st.divider()
+                        else:
+                            st.error(f"❌ **{code_rome}** - {libelle}")
+                            st.divider()
+            if 'statuts' in locals() and statuts:
+                show_details()
+            # 2 ème bouton de téléchargement Excel
+            reussis_data = [s['metier_data'] for s in statuts if s.get('success', False)]
+            if reussis_data:
+                df = create_enriched_df(reussis_data)
                 
-                if statut.get('success', False):
-                    metier_data = statut['metier_data']
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    df.to_excel(writer, sheet_name='Metiers_ROME', index=False)
                     
-                    conditions_joined = ', '.join(get_contextes_by_categorie(metier_data, "CONDITIONS_TRAVAIL"))
-                    horaires_joined   = ', '.join(get_contextes_by_categorie(metier_data, "HORAIRE_ET_DUREE_TRAVAIL"))
+                    workbook = writer.book
+                    worksheet = writer.sheets['Metiers_ROME']
                     
-                    fipu_oui = is_fipu(conditions_joined, horaires_joined)
+                    # Ajustement largeur colonnes basé sur les en-têtes
+                    for col_idx, column_cells in enumerate(worksheet.columns, start=1):
+                        column_letter = get_column_letter(col_idx)
+                        header_value = worksheet[f"{column_letter}1"].value
+                        
+                        if header_value:
+                            length = len(str(header_value)) + 5  # marge
+                            width = min(length, 80)  # limite raisonnable
+                            worksheet.column_dimensions[column_letter].width = width
                     
-                    # Ligne métier + FIPU sur une nouvelle ligne
-                    st.success(f"✅ **{libelle}** ({code_rome})")
-                    
-                    if fipu_oui:
-                        st.success("**FIPU : OUI** ✅")
-                    else:
-                        st.error("**FIPU : NON** ❌")
-                    
-                    st.markdown("**🏭 Conditions de travail et risques professionnels :**")
-                    if conditions_joined:
-                        for item in conditions_joined.split(', '):
-                            st.markdown(f"- {item}")
-                    else:
-                        st.markdown("*Aucune condition trouvée*")
-                    
-                    st.markdown("**⏰ Horaires et durée du travail :**")
-                    if horaires_joined:
-                        for item in horaires_joined.split(', '):
-                            st.markdown(f"- {item}")
-                    else:
-                        st.markdown("*Aucun horaire spécifique trouvé*")
-                    
-                    st.divider()
-                else:
-                    st.error(f"❌ **{code_rome}** - {libelle}")
-                    st.divider()
+                    worksheet.freeze_panes = "A2"
+                
+                excel_buffer.seek(0)
+                
+                st.download_button(
+                    label=f"📊 Télécharger Excel ({len(reussis_data)} métiers)",
+                    data=excel_buffer.getvalue(),
+                    file_name=f"ROME_multi_metiers_{len(reussis_data)}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
 with st.expander("💡 Exemple d'utilisation"):
     st.code("""
@@ -288,5 +329,3 @@ M1805
 H1203
 K2110
 """, language="text")
-
-
