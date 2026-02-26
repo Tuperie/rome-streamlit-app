@@ -45,7 +45,6 @@ def get_metier(code_rome):
     return r.json()
 
 def get_contextes_by_categorie(metier, categorie):
-    """Extrait les libellés pour une catégorie spécifique"""
     contextes = []
     if 'contextesTravail' in metier:
         for ctx in metier['contextesTravail']:
@@ -56,7 +55,6 @@ def get_contextes_by_categorie(metier, categorie):
     return contextes
 
 def flatten_dict(d, parent_key='', sep='_'):
-    """Aplatit un dictionnaire imbriqué pour l'Excel"""
     items = []
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -76,7 +74,6 @@ def flatten_dict(d, parent_key='', sep='_'):
     return dict(items)
 
 def is_fipu(conditions_str: str, horaires_str: str) -> bool:
-    """Retourne True si le métier présente au moins un critère FIPU"""
     if not conditions_str and not horaires_str:
         return False
     
@@ -112,7 +109,6 @@ def is_fipu(conditions_str: str, horaires_str: str) -> bool:
     return any(critere.lower() in texte for critere in criteres)
 
 def create_enriched_df(metiers_data):
-    """Crée un DataFrame enrichi avec colonnes FIPU"""
     rows = []
     
     for metier in metiers_data:
@@ -218,7 +214,6 @@ if st.session_state.search_done:
     with col1:
         st.metric("Métiers trouvés", f"{reussis} / {len(codes_list)}")
     
-    reussis_data = [s['metier_data'] for s in statuts if s.get('success', False)]
     if reussis_data:
         df = create_enriched_df(reussis_data)
         
@@ -226,7 +221,6 @@ if st.session_state.search_done:
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Metiers_ROME', index=False)
             
-            workbook = writer.book
             worksheet = writer.sheets['Metiers_ROME']
             
             for col_idx, column_cells in enumerate(worksheet.columns, start=1):
@@ -242,7 +236,7 @@ if st.session_state.search_done:
         excel_buffer.seek(0)
         
         st.download_button(
-            label=f"📥 Télécharger le fichier Excel ({len(reussis_data)} métiers)",
+            label=f"📥 Télécharger Excel ({len(reussis_data)} métiers)",
             data=excel_buffer.getvalue(),
             file_name=f"ROME_multi_metiers_{len(reussis_data)}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -335,3 +329,4 @@ M1805
 H1203
 K2110
 """, language="text")
+
