@@ -122,7 +122,7 @@ def create_enriched_df(metiers_data):
         
         flat['Conditions de travail et risques professionnels'] = conditions_joined
         flat['Horaires et durée du travail'] = horaires_joined
-        flat['Marque FIPU'] = "OUI" if is_fipu(conditions_joined, horaires_joined) else "NON"
+        flat['FIPU'] = "OUI" if is_fipu(conditions_joined, horaires_joined) else "NON"
         
         rows.append(flat)
     
@@ -132,7 +132,7 @@ def create_enriched_df(metiers_data):
     desired_order = [
         'code',
         'libelle',
-        'Marque FIPU',
+        'FIPU',
         'Conditions de travail et risques professionnels',
         'Horaires et durée du travail'
     ]
@@ -259,9 +259,9 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                     st.success(f"✅ **{libelle}** ({code_rome})")
                     
                     if fipu_oui:
-                        st.error("**Marque FIPU : OUI** ✅")
+                        st.success("**FIPU : OUI** ✅")
                     else:
-                        st.success("**Marque FIPU : NON** ❌")
+                        st.error("**FIPU : NON** ❌")
                     
                     st.markdown("**🏭 Conditions de travail et risques professionnels :**")
                     if conditions_joined:
@@ -289,5 +289,3 @@ M1805
 H1203
 K2110
 """, language="text")
-
-st.info("Dépendances :  `pip install streamlit requests pandas openpyxl`")
