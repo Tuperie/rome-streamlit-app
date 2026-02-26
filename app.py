@@ -4,6 +4,7 @@ import pandas as pd
 import io
 from openpyxl.utils import get_column_letter
 
+# TES CREDENTIALS (ne pas partager en prod !)
 CLIENT_ID = "PAR_mehdi_c9006c912f31c2c41c041645cfcab94d37320d149248365319c6d570c344349e"
 CLIENT_SECRET = "fbb9488916bf984326f35ff53d5d7c04a67d7ff78098efd570ba1859804a817b"
 
@@ -42,7 +43,7 @@ def get_metier(code_rome):
 def get_contextes_by_categorie(metier, categorie):
     """Extrait les libellés pour une catégorie spécifique"""
     contextes = []
-    if 'contextesTravail' in metier:  # ← Clé réelle dans le JSON reçu
+    if 'contextesTravail' in metier:
         for ctx in metier['contextesTravail']:
             if ctx.get('categorie') == categorie:
                 libelle = ctx.get('libelle', '').strip()
@@ -70,33 +71,74 @@ def flatten_dict(d, parent_key='', sep='_'):
             
     return dict(items)
 
+def is_fipu(conditions_str: str, horaires_str: str) -> bool:
+    """Retourne True si le métier présente au moins un critère FIPU"""
+    if not conditions_str and not horaires_str:
+        return False
+    
+    criteres = [
+        "En altitude",
+        "En milieu nucléaire",
+        "En milieu hyperbare",
+        "En milieu exigu ou confiné",
+        "En grande hauteur",
+        "En zone frigorifique",
+        "Exposition à de hautes températures",
+        "En environnement climatique difficile",
+        "Manipulation d'un engin, équipement ou outil dangereux",
+        "Port et manipulation de charges lourdes ou encombrantes",
+        "Position pénible",
+        "Station debout prolongée",
+        "Travail répétitif ou cadence imposée",
+        "En environnement bruyant",
+        "Travail dans des environnements hostiles et dangereux",
+        "Exposition à de basses températures",
+        "Exposition possible à gaz, aérosol, fumées …",
+        "Station assise prolongée",
+        "Risques de chutes",
+        "Travail dans des milieux difficiles et exigeants pour l'humain",
+        "Travail posté (2x8, 3x8, 5x8, etc.)",
+        "Travail de nuit",
+        "Travail en astreinte",
+        "Travail en horaires décalés",
+        "Travail par roulement"
+    ]
+    
+    texte = (conditions_str + " " + horaires_str).lower()
+    return any(critere.lower() in texte for critere in criteres)
+
 def create_enriched_df(metiers_data):
-    """Crée un DataFrame avec colonnes aplaties + deux colonnes condensées"""
+    """Crée un DataFrame enrichi avec colonnes FIPU"""
     rows = []
     
     for metier in metiers_data:
         flat = flatten_dict(metier)
         
-        # Extraction des deux listes condensées
         conditions = get_contextes_by_categorie(metier, "CONDITIONS_TRAVAIL")
-        horaires = get_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
+        horaires   = get_contextes_by_categorie(metier, "HORAIRE_ET_DUREE_TRAVAIL")
         
-        flat['Conditions de travail et risques professionnels'] = ', '.join(conditions) if conditions else ''
-        flat['Horaires et durée du travail'] = ', '.join(horaires) if horaires else ''
+        conditions_joined = ', '.join(conditions) if conditions else ''
+        horaires_joined   = ', '.join(horaires)   if horaires   else ''
+        
+        flat['Conditions de travail et risques professionnels'] = conditions_joined
+        flat['Horaires et durée du travail'] = horaires_joined
+        flat['Marque FIPU'] = "OUI" if is_fipu(conditions_joined, horaires_joined) else "NON"
         
         rows.append(flat)
     
     df = pd.DataFrame(rows)
     
-    # Réordonner : code → libelle → conditions → horaires → reste
-    desired_order = ['code', 'libelle']
-    if 'Conditions de travail et risques professionnels' in df.columns:
-        desired_order.append('Conditions de travail et risques professionnels')
-    if 'Horaires et durée du travail' in df.columns:
-        desired_order.append('Horaires et durée du travail')
+    # Ordre des colonnes
+    desired_order = [
+        'code',
+        'libelle',
+        'Marque FIPU',
+        'Conditions de travail et risques professionnels',
+        'Horaires et durée du travail'
+    ]
     
     remaining_cols = [c for c in df.columns if c not in desired_order]
-    final_order = desired_order
+    final_order = desired_order + remaining_cols
     
     return df[final_order]
 
@@ -154,9 +196,7 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 
                 progress_bar.progress((i + 1) / len(codes_list))
             
-            # ────────────────────────────────────────────────
-            # RÉSULTATS GLOBAUX + BOUTON TÉLÉCHARGEMENT EN HAUT
-            # ────────────────────────────────────────────────
+            # Résumé + bouton téléchargement en haut
             st.subheader("📊 Résumé de la recherche")
             
             reussis = sum(1 for s in statuts if s.get('success', False))
@@ -164,7 +204,6 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
             with col1:
                 st.metric("Métiers trouvés", f"{reussis} / {len(codes_list)}")
             
-            # Téléchargement juste après le résumé (en haut)
             reussis_data = [s['metier_data'] for s in statuts if s.get('success', False)]
             if reussis_data:
                 df = create_enriched_df(reussis_data)
@@ -193,7 +232,7 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                     data=excel_buffer.getvalue(),
                     file_name=f"ROME_multi_metiers_{len(reussis_data)}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",   # ← rend le bouton plus visible
+                    type="primary",
                     use_container_width=True
                 )
             else:
@@ -201,9 +240,7 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
             
             st.divider()
             
-            # ────────────────────────────────────────────────
-            # DÉTAILS PAR MÉTIER (après le bouton)
-            # ────────────────────────────────────────────────
+            # Détails par métier
             st.subheader("📋 Détails par métier")
             
             for statut in statuts:
@@ -211,21 +248,32 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 libelle = statut['libelle']
                 
                 if statut.get('success', False):
+                    metier_data = statut['metier_data']
+                    
+                    conditions_joined = ', '.join(get_contextes_by_categorie(metier_data, "CONDITIONS_TRAVAIL"))
+                    horaires_joined   = ', '.join(get_contextes_by_categorie(metier_data, "HORAIRE_ET_DUREE_TRAVAIL"))
+                    
+                    fipu_oui = is_fipu(conditions_joined, horaires_joined)
+                    
+                    # Ligne métier + FIPU sur une nouvelle ligne
                     st.success(f"✅ **{libelle}** ({code_rome})")
                     
-                    conditions_ctx = get_contextes_by_categorie(statut['metier_data'], "CONDITIONS_TRAVAIL")
+                    if fipu_oui:
+                        st.error("**Marque FIPU : OUI** ✅")
+                    else:
+                        st.success("**Marque FIPU : NON** ❌")
+                    
                     st.markdown("**🏭 Conditions de travail et risques professionnels :**")
-                    if conditions_ctx:
-                        for ctx in conditions_ctx:
-                            st.markdown(f"- {ctx}")
+                    if conditions_joined:
+                        for item in conditions_joined.split(', '):
+                            st.markdown(f"- {item}")
                     else:
                         st.markdown("*Aucune condition trouvée*")
                     
-                    horaires_ctx = get_contextes_by_categorie(statut['metier_data'], "HORAIRE_ET_DUREE_TRAVAIL")
                     st.markdown("**⏰ Horaires et durée du travail :**")
-                    if horaires_ctx:
-                        for ctx in horaires_ctx:
-                            st.markdown(f"- {ctx}")
+                    if horaires_joined:
+                        for item in horaires_joined.split(', '):
+                            st.markdown(f"- {item}")
                     else:
                         st.markdown("*Aucun horaire spécifique trouvé*")
                     
@@ -233,39 +281,6 @@ if st.button("🔍 Rechercher TOUS les métiers", type="primary"):
                 else:
                     st.error(f"❌ **{code_rome}** - {libelle}")
                     st.divider()
-            
-            # Téléchargement Excel
-            reussis_data = [s['metier_data'] for s in statuts if s.get('success', False)]
-            if reussis_data:
-                df = create_enriched_df(reussis_data)
-                
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    df.to_excel(writer, sheet_name='Metiers_ROME', index=False)
-                    
-                    workbook = writer.book
-                    worksheet = writer.sheets['Metiers_ROME']
-                    
-                    # Ajustement largeur colonnes basé sur les en-têtes
-                    for col_idx, column_cells in enumerate(worksheet.columns, start=1):
-                        column_letter = get_column_letter(col_idx)
-                        header_value = worksheet[f"{column_letter}1"].value
-                        
-                        if header_value:
-                            length = len(str(header_value)) + 5  # marge
-                            width = min(length, 80)  # limite raisonnable
-                            worksheet.column_dimensions[column_letter].width = width
-                    
-                    worksheet.freeze_panes = "A2"
-                
-                excel_buffer.seek(0)
-                
-                st.download_button(
-                    label=f"📊 Télécharger Excel ({len(reussis_data)} métiers)",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"ROME_multi_metiers_{len(reussis_data)}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
 
 with st.expander("💡 Exemple d'utilisation"):
     st.code("""
@@ -275,5 +290,4 @@ H1203
 K2110
 """, language="text")
 
-
-
+st.info("Dépendances :  `pip install streamlit requests pandas openpyxl`")
