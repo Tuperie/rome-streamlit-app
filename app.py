@@ -138,7 +138,7 @@ def create_enriched_df(metiers_data):
     ]
     
     remaining_cols = [c for c in df.columns if c not in desired_order]
-    final_order = desired_order + remaining_cols
+    final_order = desired_order
     
     return df[final_order]
 
@@ -289,3 +289,4 @@ M1805
 H1203
 K2110
 """, language="text")
+
