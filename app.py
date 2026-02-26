@@ -4,9 +4,8 @@ import pandas as pd
 import io
 from openpyxl.utils import get_column_letter
 
-# TES CREDENTIALS (ne pas partager en prod !)
-CLIENT_ID = "PAR_mehdi_c9006c912f31c2c41c041645cfcab94d37320d149248365319c6d570c344349e"
-CLIENT_SECRET = "fbb9488916bf984326f35ff53d5d7c04a67d7ff78098efd570ba1859804a817b"
+CLIENT_ID    = st.secrets["CLIENT_ID"]
+CLIENT_SECRET = st.secrets["CLIENT_SECRET"]
 
 TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=/partenaire"
 API_BASE = "https://api.francetravail.io/partenaire/rome-metiers"
@@ -289,4 +288,5 @@ M1805
 H1203
 K2110
 """, language="text")
+
 
